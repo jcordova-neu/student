@@ -9,7 +9,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // ====== Middleware ======
 app.use(cors());
@@ -30,7 +29,7 @@ const Student = mongoose.model('Student', studentSchema);
 
 // Root
 app.get('/', (req, res) => {
-  res.send('✅ Student CRUD API is running!');
+  res.send('Student CRUD API is running!');
 });
 
 // Create a student
@@ -87,17 +86,37 @@ app.delete('/students/:id', async (req, res) => {
   }
 });
 
-// ====== Connect to MongoDB Atlas ======
-async function startServer() {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected to MongoDB Atlas');
-    app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
-  } catch (err) {
-    console.error('❌ Failed to connect:', err.message);
-  }
-}
-//this a comment as a test
-startServer();
+// ====== CACHED MongoDB Connection (Vercel-safe) ======
+let cached = global.mongoose || { conn: null, promise: null };
 
-module.exports = app;
+async function connectDB() {
+  if (cached.conn) return cached.conn;
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+    };
+    cached.promise = mongoose.connect(process.env.MONGODB_URI, opts);
+  }
+
+  try {
+    cached.conn = await cached.promise;
+    console.log('MongoDB connected (cached)');
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
+
+  return cached.conn;
+}
+
+// ====== VERCEL HANDLER (Required) ======
+module.exports = async (req, res) => {
+  try {
+    await connectDB();    // Reuse connection
+    app(req, res);        // Let Express handle it
+  } catch (err) {
+    console.error('Handler error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
