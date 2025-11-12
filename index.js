@@ -100,4 +100,4 @@ async function startServer() {
 //this a comment as a test
 startServer();
 
-modeule.exports = app;
+module.exports = app;
